@@ -22,6 +22,8 @@ architectures than x86 and x64
 #include <string.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <error.h>
+#include <errno.h>
 
 #define x86x64_only
 // #define memory_safe
@@ -709,6 +711,41 @@ unsigned int qlz_decompress_packet(const char *source, void *destination, char *
 └───────────────────────────────────┘
 */
 
+enum MODES
+{
+	UNKNOWN = -1,
+	HELP = 0,
+	COMPRESS = 1,
+	DECOMPRESS = 2
+};
+
+enum EXITCODES {
+	SUCCESS = 0,
+	HELP_SUCCESS = 1,
+	UNKNOWN_MODE = 2,
+	MISSING_MODE_ARG = 3,
+	MISSING_SOURCE_ARG = 4,
+	MISSING_DEST_ARG = 5,
+	TOO_MANY_ARGS = 6,
+	SOURCE_ERR = 7,
+	DEST_ERR = 8
+};
+
+int getMode(char* arg) {
+	if(strcmp(arg, "-c") == 0 || strcmp(arg, "-compress") == 0 || strcmp(arg, "compress") == 0) {
+		return COMPRESS;
+	}
+	else if(strcmp(arg, "-d") == 0 || strcmp(arg, "-decompress") == 0 || strcmp(arg, "decompress") == 0) {
+		return DECOMPRESS;
+	}
+	else if(strcmp(arg, "help") == 0) {
+		return HELP;
+	}
+	else {
+		return UNKNOWN;
+	}
+}
+
 void printHelp() {
 	puts("Eqlz help:");
 	puts("Please note: All arguments must be provided in the order listed.");
@@ -725,6 +762,43 @@ void printHelp() {
 	puts("|     <input> - the input file to compress or decompress.");
 	puts("|     <dest> -  the output file to create. Will be overwritten if it already exists");
 	puts("=================================");
+}
+
+void checkArgs(int argc, char* argv[]) {
+  int code = SUCCESS;
+
+  switch (argc) {
+    case 1:
+      code = MISSING_MODE_ARG;
+      printHelp();
+      break;
+    case 2:
+      if (getMode(argv[1]) == UNKNOWN) {
+        code = UNKNOWN_MODE;
+        puts(argv[1]);
+        puts("Unknown mode!");
+      } else if (getMode(argv[1]) == HELP) {
+        code = HELP_SUCCESS;
+        printHelp();
+      }
+      else {
+    	  code = MISSING_SOURCE_ARG;
+    	  puts("Missing source argument!");
+      }
+      break;
+    case 3:
+      code = MISSING_DEST_ARG;
+      puts("Missing destination argument!");
+      break;
+    case 4:
+      // All arguments provided, no need for further checks
+      return;
+    default:
+      fprintf(stderr, "Error: Unexpected number of arguments.\n");
+      code = TOO_MANY_ARGS;
+  }
+
+  exit(code);
 }
 
 void doCompress(FILE* ifile, FILE* ofile) {
@@ -768,28 +842,33 @@ void doDecompress(FILE* ifile, FILE* ofile) {
 
 int main(int argc, char *argv[])
 {
+
+	checkArgs(argc, argv);
+
     char *modestr;
+
 
     modestr = argv[1];
 
-    if(strcmp(modestr, "help") == 0) {
-    	printHelp();
-    	exit(2);
-    }
     FILE *ifile, *ofile;
     ifile = fopen(argv[2], "rb");
     ofile = fopen(argv[3], "wb");
 
-    if(strcmp(modestr, "-c") == 0 || strcmp(modestr, "-compress") == 0 || strcmp(modestr, "compress") == 0) {
-    	doCompress(ifile, ofile);
+    if(ifile == NULL) {
+    	printf("Could not read input file %d \n", errno);
+    	exit(SOURCE_ERR);
     }
-    else if(strcmp(modestr, "-d") == 0 || strcmp(modestr, "-decompress") == 0 || strcmp(modestr, "decompress") == 0) {
-    	doDecompress(ifile, ofile);
-    }
-    else {
-    	puts("Unknown mode provided!");
-    	exit(1);
+    if(ofile == NULL) {
+    	printf("Could not write output file %d \n", errno);
+    	exit(DEST_ERR);
     }
 
+    if(getMode(modestr) == COMPRESS) {
+    	doCompress(ifile, ofile);
+    }
+
+    else if(getMode(modestr) == DECOMPRESS) {
+    	doDecompress(ifile, ofile);
+    }
 
 }
